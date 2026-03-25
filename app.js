@@ -216,16 +216,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     addParticipant(pData.name, pData.tz, pData);
                 });
             } else {
+                addParticipant(t('creator_default') + ' 1', defaultTz);
                 addParticipant(t('participant_default') + ' 1', defaultTz);
-                addParticipant(t('participant_default') + ' 2', defaultTz);
             }
         } catch(e) {
             addParticipant(t('participant_default') + ' 1', defaultTz);
             addParticipant(t('participant_default') + ' 2', defaultTz);
         }
     } else {
+        addParticipant(t('creator_default') + ' 1', defaultTz);
         addParticipant(t('participant_default') + ' 1', defaultTz);
-        addParticipant(t('participant_default') + ' 2', defaultTz);
     }
 
     const addParticipantBtn = document.getElementById('add-participant-btn');

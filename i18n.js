@@ -52,6 +52,7 @@ const translations = {
         toast_located: "已定位",
         alert_enter_name_first: "⚠️ 请先输入会议名称后再创建链接！",
         participant_default: "参会者",
+        creator_default: "创建者",
         
         common_timezones_group: "⭐ 常见受邀地区",
         other_timezones_group: "🌍 全球其他时区",
@@ -135,6 +136,7 @@ const translations = {
         toast_located: "Located",
         alert_enter_name_first: "⚠️ Please enter a meeting name before linking!",
         participant_default: "Participant",
+        creator_default: "Creator",
         
         common_timezones_group: "⭐ Common Timezones",
         other_timezones_group: "🌍 Other Global Timezones",
