@@ -94,9 +94,9 @@ function renderCalendarGrid() {
     const monthH4 = document.getElementById('cal-current-month');
     const endOfWeek = new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000);
     if (weekStartDate.getMonth() === endOfWeek.getMonth()) {
-        monthH4.textContent = `${weekStartDate.getFullYear()}年${weekStartDate.getMonth()+1}月`;
+        monthH4.textContent = `${weekStartDate.getFullYear()}${t('year')}${weekStartDate.getMonth()+1}${t('month')}`;
     } else {
-        monthH4.textContent = `${weekStartDate.getMonth()+1}月 - ${endOfWeek.getMonth()+1}月`;
+        monthH4.textContent = `${weekStartDate.getMonth()+1}${t('month')} - ${endOfWeek.getMonth()+1}${t('month')}`;
     }
 
     const grid = document.getElementById('calendar-grid');
@@ -131,7 +131,7 @@ function renderCalendarGrid() {
     const daysContainer = document.createElement('div');
     daysContainer.className = 'cal-days-container';
     
-    const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+    const weekDays = [t('week_1'), t('week_2'), t('week_3'), t('week_4'), t('week_5'), t('week_6'), t('week_0')];
     
     for (let c = 0; c < 7; c++) {
         const currentD = new Date(weekStartDate.getTime() + c * 24 * 60 * 60 * 1000);
@@ -143,7 +143,7 @@ function renderCalendarGrid() {
         
         const header = document.createElement('div');
         header.className = 'cal-day-header';
-        header.innerHTML = `周${weekDays[c]}<br><span style="font-weight:400; font-size:0.75rem; color:var(--text-muted)">${currentD.getMonth()+1}/${currentD.getDate()}</span>`;
+        header.innerHTML = `${t('day_prefix')}${weekDays[c]}<br><span style="font-weight:400; font-size:0.75rem; color:var(--text-muted)">${currentD.getMonth()+1}/${currentD.getDate()}</span>`;
         
         const gridArea = document.createElement('div');
         gridArea.className = 'cal-day-grid';
@@ -652,7 +652,7 @@ function renderNiceBadges(container, selections) {
         const editBtn = document.createElement('button');
         editBtn.innerHTML = '✏️';
         editBtn.style = "background:transparent; border:none; cursor:pointer; font-size:14px; filter: grayscale(100%) brightness(200%); outline:none;";
-        editBtn.title = "原位编辑时间";
+        editBtn.title = t('confirm_slot_title');
         editBtn.addEventListener('click', () => {
             badge.style.display = 'none';
             badge.previousElementSibling.style.display = 'flex'; // reveal native inputs
@@ -661,7 +661,7 @@ function renderNiceBadges(container, selections) {
         const delBtn = document.createElement('button');
         delBtn.innerHTML = '❌';
         delBtn.style = "background:transparent; border:none; cursor:pointer; font-size:12px; filter: grayscale(100%) brightness(200%); outline:none;";
-        delBtn.title = "移除该时段";
+        delBtn.title = t('remove_slot_title');
         delBtn.addEventListener('click', () => {
             badge.previousElementSibling.remove(); // remove hidden input row
             badge.remove(); // remove self

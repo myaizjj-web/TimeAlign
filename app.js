@@ -15,7 +15,7 @@ async function createMeeting(dataStr) {
 
 async function fetchMeeting(meetingId) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/meetings?id=eq.${meetingId}&select=data`, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Cache-Control': 'no-cache, no-store' }
     });
     if (!res.ok) throw new Error('DB Error');
     const rows = await res.json();
@@ -48,18 +48,21 @@ let participantCount = 0;
 let isCreator = true;
 
 const commonTimezones = [
-    { label: '中国大陆 (北京时间)', value: 'Asia/Shanghai' },
-    { label: '台湾 (台北时间)', value: 'Asia/Taipei' },
-    { label: '美国 - 美东 (纽约)', value: 'America/New_York' },
-    { label: '美国 - 美西 (洛杉矶)', value: 'America/Los_Angeles' },
-    { label: '美国 - 中部 (芝加哥)', value: 'America/Chicago' },
-    { label: '加拿大 - 东部 (多伦多)', value: 'America/Toronto' },
-    { label: '加拿大 - 西部 (温哥华)', value: 'America/Vancouver' },
-    { label: '欧洲 - 英国 (伦敦)', value: 'Europe/London' },
-    { label: '欧洲 - 中欧 (巴黎/柏林)', value: 'Europe/Paris' }
+    { key: 'tz_cn', value: 'Asia/Shanghai' },
+    { key: 'tz_tw', value: 'Asia/Taipei' },
+    { key: 'tz_us_east', value: 'America/New_York' },
+    { key: 'tz_us_west', value: 'America/Los_Angeles' },
+    { key: 'tz_us_central', value: 'America/Chicago' },
+    { key: 'tz_ca_east', value: 'America/Toronto' },
+    { key: 'tz_ca_west', value: 'America/Vancouver' },
+    { key: 'tz_uk', value: 'Europe/London' },
+    { key: 'tz_eu', value: 'Europe/Paris' }
 ];
 
 function translateTz(tz) {
+    if (typeof currentLang !== 'undefined' && currentLang === 'en') {
+        return tz.replace(/_/g, ' ');
+    }
     const map = {
         'America': '美洲', 'Asia': '亚洲', 'Europe': '欧洲', 
         'Africa': '非洲', 'Australia': '澳洲', 'Pacific': '太平洋',
@@ -84,14 +87,14 @@ function populateTimezones(selectElement, defaultTz, showAll = false) {
     selectElement.innerHTML = '';
     
     const commonGroup = document.createElement('optgroup');
-    commonGroup.label = '⭐ 常见受邀地区';
+    commonGroup.label = t('common_timezones_group');
     
     if (!defaultTz) defaultTz = commonTimezones[0].value;
     
     commonTimezones.forEach(tzData => {
         const option = document.createElement('option');
         option.value = tzData.value;
-        option.textContent = tzData.label;
+        option.textContent = tzData.key ? t(tzData.key) : tzData.label;
         if (tzData.value === defaultTz) option.selected = true;
         commonGroup.appendChild(option);
     });
@@ -99,11 +102,11 @@ function populateTimezones(selectElement, defaultTz, showAll = false) {
 
     if (showAll) {
         const otherGroup = document.createElement('optgroup');
-        otherGroup.label = '🌍 全球其他时区';
+        otherGroup.label = t('other_timezones_group');
         
         const foldOption = document.createElement('option');
         foldOption.value = 'FOLD_MORE';
-        foldOption.textContent = '⬆️ 收起其余 400+ 个全球时区...';
+        foldOption.textContent = t('fold_timezones');
         foldOption.style.fontWeight = 'bold';
         otherGroup.appendChild(foldOption);
         
@@ -134,7 +137,7 @@ function populateTimezones(selectElement, defaultTz, showAll = false) {
         
         const moreOption = document.createElement('option');
         moreOption.value = 'LOAD_MORE';
-        moreOption.textContent = '⬇️ 展开其余 400+ 个全球时区...';
+        moreOption.textContent = t('load_timezones');
         moreOption.style.fontWeight = 'bold';
         selectElement.appendChild(moreOption);
     }
@@ -146,20 +149,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hash && hash.startsWith('#id=')) {
         const meetingId = hash.substring(4);
         document.body.style.opacity = '0.5';
-        document.title = '⌛ 加载云会议中...';
+        document.title = t('loading_cloud_meeting');
         fetchMeeting(meetingId).then(decodedStr => {
             if (decodedStr) {
-                sessionStorage.setItem('timeAlignState', decodedStr);
+                localStorage.setItem('timeAlignState', decodedStr);
+                localStorage.setItem('timeAlignMeetingId', meetingId);
                 window.history.replaceState(null, '', window.location.pathname);
                 window.location.reload();
             } else {
-                alert('找不到该 6 位通用会议编号！');
+                alert(t('alert_no_meeting_found'));
                 document.body.style.opacity = '1';
                 document.title = 'TimeAlign';
                 window.history.replaceState(null, '', window.location.pathname);
             }
         }).catch(err => {
-            alert('网络或数据库连接失败。');
+            alert(t('alert_db_error'));
             document.body.style.opacity = '1';
             window.history.replaceState(null, '', window.location.pathname);
         });
@@ -171,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const encoded = hash.substring(7);
             const decodedStr = decodeURIComponent(atob(encoded));
             JSON.parse(decodedStr); // Validate safety
-            sessionStorage.setItem('timeAlignState', decodedStr);
+            localStorage.setItem('timeAlignState', decodedStr);
             isCreator = false; // Invitee mode active
             // Hide the massive hash URL from the browser string
             window.history.replaceState(null, '', window.location.pathname);
@@ -195,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    const saved = sessionStorage.getItem('timeAlignState');
+    const saved = localStorage.getItem('timeAlignState');
     if (saved) {
         try {
             const data = JSON.parse(saved);
@@ -212,21 +216,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     addParticipant(pData.name, pData.tz, pData);
                 });
             } else {
-                addParticipant('参会者1', defaultTz, { avatar: 'emoji:🧑' });
-                addParticipant('参会者2', defaultTz, { avatar: 'emoji:👩' });
+                addParticipant(t('participant_default') + ' 1', defaultTz);
+                addParticipant(t('participant_default') + ' 2', defaultTz);
             }
         } catch(e) {
-            addParticipant('参会者1', defaultTz, { avatar: 'emoji:🧑' });
-            addParticipant('参会者2', defaultTz, { avatar: 'emoji:👩' });
+            addParticipant(t('participant_default') + ' 1', defaultTz);
+            addParticipant(t('participant_default') + ' 2', defaultTz);
         }
     } else {
-        addParticipant('参会者1', defaultTz, { avatar: 'emoji:🧑' });
-        addParticipant('参会者2', defaultTz, { avatar: 'emoji:👩' });
+        addParticipant(t('participant_default') + ' 1', defaultTz);
+        addParticipant(t('participant_default') + ' 2', defaultTz);
     }
 
     const addParticipantBtn = document.getElementById('add-participant-btn');
     if (!isCreator) {
-        addParticipantBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:2px;"><path d="M12 5v14M5 12h14"/></svg>添加我的时间';
+        addParticipantBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:2px;"><path d="M12 5v14M5 12h14"/></svg>' + t('btn_add_my_time');
         const topic = document.getElementById('meeting-topic');
         if (topic) {
             topic.readOnly = true;
@@ -243,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const topicInput = document.getElementById('meeting-topic');
             if (!topicInput.value.trim()) {
                 topicInput.style.border = '2px solid #f87171';
-                topicInput.placeholder = '⚠️ 请先输入会议名称后再创建链接！';
+                topicInput.placeholder = t('alert_enter_name_first');
                 topicInput.focus();
                 setTimeout(() => {
                     topicInput.style.border = '';
@@ -252,13 +256,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             saveData();
-            const stateStr = sessionStorage.getItem('timeAlignState');
+            let stateStr;
+            if (hash.startsWith('#state=')) {
+                stateStr = hash.substring(7);
+            } else {
+                stateStr = localStorage.getItem('timeAlignState');
+            }
             if (!stateStr) return;
             
             const orig = shareBtn.innerHTML;
-            shareBtn.innerHTML = '<span class="icon">⏳</span> 正在云端发号...';
+            shareBtn.innerHTML = '<span class="icon">⏳</span> ' + t('toast_generating_id');
             
             createMeeting(stateStr).then(meetingId => {
+                localStorage.setItem('timeAlignMeetingId', meetingId);
                 const topicName = document.getElementById('meeting-topic').value.trim() || '未命名会议';
                 const siteUrl = window.location.origin + window.location.pathname;
                 const directLink = siteUrl + '#id=' + meetingId;
@@ -271,14 +281,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         badgeText.textContent = meetingId;
                         badge.style.display = 'block';
                     }
-                    shareBtn.innerHTML = `<span class="icon">✅</span> 编号已复制`;
+                    shareBtn.innerHTML = `<span class="icon">✅</span> ` + t('toast_id_copied');
                     setTimeout(() => shareBtn.innerHTML = orig, 3000);
                 });
             }).catch(e => {
                 const enc = btoa(encodeURIComponent(stateStr));
                 const shareUrl = window.location.origin + window.location.pathname + '#share=' + enc;
                 navigator.clipboard.writeText(shareUrl).then(() => {
-                    shareBtn.innerHTML = '<span class="icon">❌</span> 云失败, 备用本地码已复制';
+                    shareBtn.innerHTML = '<span class="icon">❌</span> ' + t('toast_cloud_fail_fallback');
                     setTimeout(() => shareBtn.innerHTML = orig, 3000);
                 });
             });
@@ -288,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('auto-locate-btn').addEventListener('click', () => {
         const btn = document.getElementById('auto-locate-btn');
         const orig = btn.innerHTML;
-        btn.innerHTML = '<span class="icon">⏳</span> 定位中...';
+        btn.innerHTML = '<span class="icon">⏳</span> ' + t('toast_locating');
         
         const applyLocalTz = () => {
             const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -302,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             saveData();
-            btn.innerHTML = '<span class="icon">✅</span> 已定位';
+            btn.innerHTML = '<span class="icon">✅</span> ' + t('toast_located');
             setTimeout(() => btn.innerHTML = orig, 2000);
         };
 
@@ -425,7 +435,7 @@ function saveData() {
         });
         data.participants.push({ name, tz, avatar, slots });
     });
-    sessionStorage.setItem('timeAlignState', JSON.stringify(data));
+    localStorage.setItem('timeAlignState', JSON.stringify(data));
 }
 
 function addParticipant(name = '', tz = 'Asia/Shanghai', restoreData = null) {
@@ -443,7 +453,7 @@ function addParticipant(name = '', tz = 'Asia/Shanghai', restoreData = null) {
     }
     
     const nameInput = clone.querySelector('.name-input');
-    nameInput.value = name || `参会者 ${participantCount}`;
+    nameInput.value = name || `${t('participant_default')} ${participantCount}`;
     if (isImportedAndInvitee) {
         nameInput.readOnly = true;
         nameInput.style.pointerEvents = 'none';
@@ -554,7 +564,7 @@ function addParticipant(name = '', tz = 'Asia/Shanghai', restoreData = null) {
                         tzSelect.value = localTz;
                     }
                     saveData();
-                    btn.innerHTML = '✅ 已定位';
+                    btn.innerHTML = '✅ ' + t('toast_located');
                     setTimeout(() => btn.innerHTML = orig, 2000);
                 };
 
@@ -705,7 +715,7 @@ function displayResults(overlaps, targetTz) {
     if (overlaps.length === 0) {
         container.innerHTML = `<div class="no-overlap">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:1rem; opacity:0.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><br>
-            未找到所有人均空闲的时段。
+            ${t('no_overlap_found')}
         </div>`;
         return;
     }
@@ -715,8 +725,9 @@ function displayResults(overlaps, targetTz) {
         const localStart = new Date(overlap.start);
         const localEnd = new Date(overlap.end);
         
+        const locale = (typeof currentLang !== 'undefined' && currentLang === 'en') ? 'en-US' : 'zh-CN';
         const options = { timeZone: targetTz, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
-        const sTime = localStart.toLocaleString('zh-CN', options);
+        const sTime = localStart.toLocaleString(locale, options);
         let eTime = '';
         
         // If they end on the exact same date & month in the target timezone:
@@ -724,22 +735,22 @@ function displayResults(overlaps, targetTz) {
         const endDayStr = localEnd.toLocaleString('en-US', { timeZone: targetTz, month: 'numeric', day: 'numeric' });
         
         if (startDayStr === endDayStr) {
-            eTime = localEnd.toLocaleString('zh-CN', { timeZone: targetTz, hour: '2-digit', minute: '2-digit', hour12: false });
+            eTime = localEnd.toLocaleString(locale, { timeZone: targetTz, hour: '2-digit', minute: '2-digit', hour12: false });
         } else {
-            eTime = localEnd.toLocaleString('zh-CN', options);
+            eTime = localEnd.toLocaleString(locale, options);
         }
         
         const durationMins = (overlap.end - overlap.start) / 60000;
         const durHrs = Math.floor(durationMins / 60);
         const durLeftMs = durationMins % 60;
-        let durStr = durHrs > 0 ? `${durHrs}小时 ` : '';
-        if (durLeftMs > 0) durStr += `${durLeftMs}分钟`;
+        let durStr = durHrs > 0 ? `${durHrs}${t('hour')} ` : '';
+        if (durLeftMs > 0) durStr += `${durLeftMs}${t('minute')}`;
         
         const el = document.createElement('div');
         el.className = 'result-item';
         el.innerHTML = `
             <div class="result-time">${sTime} — ${eTime}</div>
-            <div class="result-duration">共重合 ${durStr}</div>
+            <div class="result-duration">${t('overlap_summary')} ${durStr}</div>
         `;
         container.appendChild(el);
     });
@@ -787,7 +798,8 @@ function renderTimeline(participantsData, targetTz) {
         hr.style.flex = stepH;
         
         const tickDate = new Date(minMs + i * 60 * 60 * 1000);
-        hr.textContent = tickDate.toLocaleString('zh-CN', { timeZone: targetTz, day: 'numeric', hour: '2-digit', hour12: false });
+        const locale = (typeof currentLang !== 'undefined' && currentLang === 'en') ? 'en-US' : 'zh-CN';
+        hr.textContent = tickDate.toLocaleString(locale, { timeZone: targetTz, day: 'numeric', hour: '2-digit', hour12: false });
         axis.appendChild(hr);
     }
     container.appendChild(axis);
@@ -803,7 +815,7 @@ function renderTimeline(participantsData, targetTz) {
         if (typeof commonTimezones !== 'undefined') {
             const match = commonTimezones.find(c => c.value === p.tz);
             if (match) {
-                shortLocation = match.label.split(' ')[0];
+                shortLocation = t(match.key).split(' ')[0];
             } else {
                 if (p.tz.startsWith('Europe/')) {
                     shortLocation = '欧洲';
@@ -813,7 +825,7 @@ function renderTimeline(participantsData, targetTz) {
             }
         }
         
-        label.textContent = `${p.name || 'Anonymous'} (来自${shortLocation})`;
+        label.textContent = `${p.name || t('anonymous')} (${t('from')} ${shortLocation})`;
         label.title = label.textContent;
         
         const bars = document.createElement('div');
@@ -851,10 +863,10 @@ function renderTimeline(participantsData, targetTz) {
             
             const overlapLabel = document.createElement('div');
             overlapLabel.className = 'timeline-label';
-            overlapLabel.textContent = '✅ 重叠时段';
+            overlapLabel.textContent = t('overlap_period');
             overlapLabel.style.color = '#34d399';
             overlapLabel.style.fontWeight = '700';
-            overlapLabel.title = '所有人均空闲的重叠时间';
+            overlapLabel.title = t('overlap_tooltip');
             
             const overlapBars = document.createElement('div');
             overlapBars.className = 'timeline-bars';
