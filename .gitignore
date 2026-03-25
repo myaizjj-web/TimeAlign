@@ -1,0 +1,3 @@
+deploy.sh
+*.png
+!logo.png
