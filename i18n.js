@@ -7,6 +7,7 @@ const translations = {
         meeting_id: "📋 会议编号：",
         meeting_id_desc: "分享此编号即可协同找时间",
         btn_share_id: "创建会议编号",
+        btn_copy_invite_link: "复制邀请链接",
         btn_add_participant: "添加参与者",
         btn_add_my_time: "添加我的时间",
         btn_calc_best_time: "寻找最佳时间",
@@ -44,10 +45,12 @@ const translations = {
         toast_network_error: "网络错误",
         alert_no_meeting_found: "找不到该 6 位通用会议编号！",
         alert_db_error: "网络或数据库连接失败。",
+        alert_cloud_unavailable_link: "云端会议暂不可用，请让创建者直接发送邀请链接。",
         loading_cloud_meeting: "⌛ 加载云会议中...",
         toast_generating_id: "正在云端发号...",
         toast_id_copied: "编号已复制",
         toast_cloud_fail_fallback: "云失败, 备用本地码已复制",
+        toast_local_link_copied: "邀请链接已复制",
         toast_locating: "定位中...",
         toast_located: "已定位",
         alert_enter_name_first: "⚠️ 请先输入会议名称后再创建链接！",
@@ -91,6 +94,7 @@ const translations = {
         meeting_id: "📋 Meeting ID:",
         meeting_id_desc: "Share this ID to schedule collaboratively",
         btn_share_id: "Create Meeting ID",
+        btn_copy_invite_link: "Copy Invite Link",
         btn_add_participant: "Add Participant",
         btn_add_my_time: "Add My Time",
         btn_calc_best_time: "Find Best Time",
@@ -128,10 +132,12 @@ const translations = {
         toast_network_error: "Network Error",
         alert_no_meeting_found: "Cannot find this 6-digit meeting ID!",
         alert_db_error: "Network or database connection failed.",
+        alert_cloud_unavailable_link: "Cloud meeting IDs are unavailable right now. Ask the creator for a direct invite link instead.",
         loading_cloud_meeting: "⌛ Loading cloud meeting...",
         toast_generating_id: "Generating ID...",
         toast_id_copied: "ID Copied",
         toast_cloud_fail_fallback: "Cloud failed, local fallback copied",
+        toast_local_link_copied: "Invite link copied",
         toast_locating: "Locating...",
         toast_located: "Located",
         alert_enter_name_first: "⚠️ Please enter a meeting name before linking!",
@@ -213,6 +219,9 @@ function updateDOMTranslations() {
     }
     if (document.getElementById('calendar-modal') && !document.getElementById('calendar-modal').classList.contains('hidden')) {
         if (typeof renderCalendarGrid === 'function') renderCalendarGrid();
+    }
+    if (typeof updateShareButtonCloudMode === 'function') {
+        updateShareButtonCloudMode();
     }
 }
 

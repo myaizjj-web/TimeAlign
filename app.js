@@ -2,11 +2,115 @@
 const SUPABASE_URL = 'https://dvgprznbqdmmhnvabmnl.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2Z3Byem5icWRtbWhudmFibW5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MzE0MTAsImV4cCI6MjA5MDAwNzQxMH0.oUYU4EpZDaPc_HGbj7q_6q0ftiWEXyAQZwiqar6s7ss';
 
+let cloudStatus = 'unknown';
+
+function getSupabaseHeaders(extraHeaders = {}) {
+    return {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        ...extraHeaders
+    };
+}
+
+function isCloudUnavailable() {
+    return cloudStatus === 'offline';
+}
+
+function updateShareButtonCloudMode() {
+    const shareBtn = document.getElementById('share-btn');
+    const label = shareBtn?.querySelector('[data-i18n]');
+    if (!shareBtn || !label) return;
+
+    const key = isCloudUnavailable() ? 'btn_copy_invite_link' : 'btn_share_id';
+    label.setAttribute('data-i18n', key);
+    label.textContent = t(key);
+    shareBtn.dataset.mode = isCloudUnavailable() ? 'local' : 'cloud';
+}
+
+function setCloudStatus(nextStatus, reason = null) {
+    if (cloudStatus === nextStatus) return;
+    cloudStatus = nextStatus;
+    if (nextStatus === 'offline') {
+        console.warn('[Cloud] Falling back to local share mode.', reason || '');
+    }
+    updateShareButtonCloudMode();
+}
+
+function clearCloudMeetingId() {
+    localStorage.removeItem('timeAlignMeetingId');
+    const badge = document.getElementById('meeting-id-badge');
+    const badgeText = document.getElementById('meeting-id-text');
+    if (badge) badge.style.display = 'none';
+    if (badgeText) badgeText.textContent = '';
+}
+
+async function cloudFetch(path, init = {}) {
+    if (isCloudUnavailable()) {
+        throw new Error('CloudUnavailable');
+    }
+    try {
+        const response = await fetch(`${SUPABASE_URL}${path}`, {
+            ...init,
+            headers: getSupabaseHeaders(init.headers || {})
+        });
+        setCloudStatus('online');
+        return response;
+    } catch (error) {
+        setCloudStatus('offline', error);
+        throw error;
+    }
+}
+
+function getLocalShareUrl(stateStr) {
+    const encoded = btoa(encodeURIComponent(stateStr));
+    return `${window.location.origin}${window.location.pathname}#share=${encoded}`;
+}
+
+async function copyToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+}
+
+function getShareButtonIdleHTML() {
+    const labelKey = isCloudUnavailable() ? 'btn_copy_invite_link' : 'btn_share_id';
+    return `<span class="icon">🔗</span><span data-i18n="${labelKey}">${t(labelKey)}</span>`;
+}
+
+async function copyLocalShareLink(stateStr) {
+    clearCloudMeetingId();
+    await copyToClipboard(getLocalShareUrl(stateStr));
+    updateShareButtonCloudMode();
+}
+
+async function updateMeetingData(meetingId, dataStr) {
+    const res = await cloudFetch(`/rest/v1/meetings?id=eq.${meetingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: dataStr })
+    });
+    if (!res.ok) throw new Error(`DB Error ${res.status}`);
+    return res;
+}
+
 async function createMeeting(dataStr) {
     const meetingId = Math.floor(100000 + Math.random() * 900000).toString();
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/meetings`, {
+    const res = await cloudFetch('/rest/v1/meetings', {
         method: 'POST',
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
         body: JSON.stringify({ id: meetingId, data: dataStr })
     });
     if (!res.ok) throw new Error('DB Error');
@@ -14,8 +118,8 @@ async function createMeeting(dataStr) {
 }
 
 async function fetchMeeting(meetingId) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/meetings?id=eq.${meetingId}&select=data`, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Cache-Control': 'no-cache, no-store' }
+    const res = await cloudFetch(`/rest/v1/meetings?id=eq.${meetingId}&select=data`, {
+        headers: { 'Cache-Control': 'no-cache, no-store' }
     });
     if (!res.ok) throw new Error('DB Error');
     const rows = await res.json();
@@ -23,22 +127,27 @@ async function fetchMeeting(meetingId) {
 }
 
 async function searchMeetingByName(name) {
-    // Search meetings whose stored JSON data contains the topic name
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/meetings?select=id,data&order=id.desc&limit=10`, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-    });
-    if (!res.ok) return [];
-    const rows = await res.json();
-    const results = [];
-    for (const row of rows) {
-        try {
-            const d = JSON.parse(row.data);
-            if (d.topic && d.topic.includes(name)) {
-                results.push({ id: row.id, topic: d.topic });
-            }
-        } catch(e) {}
+    if (isCloudUnavailable()) return [];
+
+    try {
+        const res = await cloudFetch('/rest/v1/meetings?select=id,data&order=id.desc&limit=10');
+        if (!res.ok) return [];
+
+        const rows = await res.json();
+        const results = [];
+        for (const row of rows) {
+            try {
+                const d = JSON.parse(row.data);
+                const topic = d.meetingTopic || d.topic || '';
+                if (topic.includes(name)) {
+                    results.push({ id: row.id, topic });
+                }
+            } catch(e) {}
+        }
+        return results;
+    } catch (error) {
+        return [];
     }
-    return results;
 }
 
 let _searchTimer = null;
@@ -163,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.history.replaceState(null, '', window.location.pathname);
             }
         }).catch(err => {
-            alert(t('alert_db_error'));
+            alert(isCloudUnavailable() ? t('alert_cloud_unavailable_link') : t('alert_db_error'));
             document.body.style.opacity = '1';
             window.history.replaceState(null, '', window.location.pathname);
         });
@@ -242,6 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('calculate-btn').addEventListener('click', calculateBestTime);
     
     const shareBtn = document.getElementById('share-btn');
+    updateShareButtonCloudMode();
     if (shareBtn) {
         shareBtn.addEventListener('click', () => {
             const topicInput = document.getElementById('meeting-topic');
@@ -251,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 topicInput.focus();
                 setTimeout(() => {
                     topicInput.style.border = '';
-                    topicInput.placeholder = '✨ 创建新会议名称或者输入会议编号...';
+                    topicInput.placeholder = t('topic_placeholder');
                 }, 3000);
                 return;
             }
@@ -264,7 +374,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!stateStr) return;
             
-            const orig = shareBtn.innerHTML;
+            const orig = getShareButtonIdleHTML();
+            if (isCloudUnavailable()) {
+                copyLocalShareLink(stateStr).then(() => {
+                    shareBtn.innerHTML = '<span class="icon">✅</span> ' + t('toast_local_link_copied');
+                    setTimeout(() => {
+                        shareBtn.innerHTML = getShareButtonIdleHTML();
+                    }, 3000);
+                });
+                return;
+            }
+
             shareBtn.innerHTML = '<span class="icon">⏳</span> ' + t('toast_generating_id');
             
             createMeeting(stateStr).then(meetingId => {
@@ -273,7 +393,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const siteUrl = window.location.origin + window.location.pathname;
                 const directLink = siteUrl + '#id=' + meetingId;
                 const clipText = `【${topicName}】会议编号：${meetingId}\n点击链接直接加入：${directLink}\n（或打开 ${siteUrl} 手动输入编号 ${meetingId}）`;
-                navigator.clipboard.writeText(clipText).then(() => {
+                copyToClipboard(clipText).then(() => {
                     // Show persistent badge
                     const badge = document.getElementById('meeting-id-badge');
                     const badgeText = document.getElementById('meeting-id-text');
@@ -285,11 +405,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => shareBtn.innerHTML = orig, 3000);
                 });
             }).catch(e => {
-                const enc = btoa(encodeURIComponent(stateStr));
-                const shareUrl = window.location.origin + window.location.pathname + '#share=' + enc;
-                navigator.clipboard.writeText(shareUrl).then(() => {
-                    shareBtn.innerHTML = '<span class="icon">❌</span> ' + t('toast_cloud_fail_fallback');
-                    setTimeout(() => shareBtn.innerHTML = orig, 3000);
+                copyLocalShareLink(stateStr).then(() => {
+                    shareBtn.innerHTML = '<span class="icon">✅</span> ' + t('toast_local_link_copied');
+                    setTimeout(() => {
+                        shareBtn.innerHTML = getShareButtonIdleHTML();
+                    }, 3000);
                 });
             });
         });
@@ -346,6 +466,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (hashPayload) {
                 if (isCloudId) {
+                    if (isCloudUnavailable()) {
+                        alert(t('alert_cloud_unavailable_link'));
+                        return;
+                    }
                     window.location.hash = 'id=' + hashPayload;
                     window.location.reload();
                     return;
@@ -360,7 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Debounced name-based search
-            if (val.length >= 2 && !/^\d+$/.test(val)) {
+            if (val.length >= 2 && !/^\d+$/.test(val) && !isCloudUnavailable()) {
                 clearTimeout(_searchTimer);
                 _searchTimer = setTimeout(() => {
                     // Remove old dropdown
@@ -553,7 +677,7 @@ function addParticipant(name = '', tz = 'Asia/Shanghai', restoreData = null) {
             locateBtn.addEventListener('click', (e) => {
                 const btn = e.target.closest('.participant-auto-locate');
                 const orig = btn.innerHTML;
-                btn.innerHTML = '⏳ 定位中...';
+                btn.innerHTML = '⏳ ' + t('toast_locating');
                 
                 const applyLocalTz = () => {
                     const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
